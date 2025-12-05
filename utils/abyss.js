@@ -1,41 +1,36 @@
+import fs from "fs";
+import FormData from "form-data";
 import fetch from "node-fetch";
 import config from "../config.js";
 
-export async function uploadAbyss(fileId) {
+export async function uploadToAbyssLocal(filePath) {
+    try {
+        const apiKey = config.abyss_key;
 
-    // LOGIN
-    const login = await fetch("https://api.abyss.to/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            email: "YOUR_EMAIL",
-            password: "YOUR_PASSWORD"
-        })
-    });
+        if (!fs.existsSync(filePath)) {
+            return { status: "error", message: "Temp file not found" };
+        }
 
-    const loginData = await login.json();
+        const form = new FormData();
+        form.append("file", fs.createReadStream(filePath));
 
-    if (!loginData.token) {
-        return { status: "error", message: "Abyss login failed", full: loginData };
+        const upload = await fetch(`https://up.abyss.to/${apiKey}`, {
+            method: "POST",
+            body: form
+        });
+
+        const data = await upload.json();
+
+        if (!data.slug) {
+            return { status: "error", message: "Abyss upload failed", full: data };
+        }
+
+        return {
+            status: "success",
+            link: `https://abysscdn.com/embed/${data.slug}`
+        };
+
+    } catch (err) {
+        return { status: "error", message: err.message };
     }
-
-    const token = loginData.token;
-
-    // REMOTE UPLOAD
-    const remote = await fetch(`https://api.abyss.to/v1/remote/${fileId}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
-    });
-
-    const remoteData = await remote.json();
-
-    if (!remoteData.id) {
-        return { status: "error", message: "Remote upload failed", full: remoteData };
-    }
-
-    // EMBED URL
-    return {
-        status: "success",
-        link: `https://abysscdn.com/embed/${remoteData.id}`
-    };
 }
