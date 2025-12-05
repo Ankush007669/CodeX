@@ -1,45 +1,50 @@
 import express from "express";
+import fs from "fs";
+import fetch from "node-fetch";
 import { extractFileId, downloadGDrive } from "../utils/gdrive.js";
-import { uploadToAbyssLocal } from "../utils/abyss.js";
 import { cleanup } from "../utils/cleanup.js";
 import config from "../config.js";
 
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-    try {
-        const { file_name, drive_link } = req.body;
+  try {
+    const { file_name, drive_link } = req.body;
 
-        if (!file_name || !drive_link)
-            return res.json({ status: "error", message: "Missing fields" });
+    if (!file_name || !drive_link)
+      return res.json({ status: "error", message: "Missing fields" });
 
-        const fileId = extractFileId(drive_link);
-        if (!fileId) {
-            return res.json({
-                status: "error",
-                message: "Invalid Google Drive link"
-            });
-        }
+    const fileId = extractFileId(drive_link);
 
-        const filePath = config.tmp_dir + file_name;
+    if (!fileId)
+      return res.json({ status: "error", message: "Invalid Google Drive link" });
 
-        // STEP 1: Download from Google Drive → local temp
-        await downloadGDrive(fileId, filePath);
+    const filePath = config.tmp_dir + file_name;
 
-        // STEP 2: Upload temp file → Abyss using API KEY
-        const abyssResult = await uploadToAbyssLocal(filePath);
+    // STEP 1: Download GDrive → temp file
+    await downloadGDrive(fileId, filePath);
 
-        // STEP 3: Remove temp file
-        cleanup(filePath);
+    // STEP 2: Stream file to Worker uploader
+    const uploadUrl = `${config.worker_url}abyss-upload?key=${config.abyss_key}`;
 
-        return res.json(abyssResult);
+    const workerUpload = await fetch(uploadUrl, {
+      method: "POST",
+      body: fs.createReadStream(filePath)
+    });
 
-    } catch (err) {
-        return res.json({
-            status: "error",
-            message: "Server error: " + err.toString()
-        });
-    }
+    const finalJson = await workerUpload.json();
+
+    // STEP 3: Cleanup
+    cleanup(filePath);
+
+    return res.json(finalJson);
+
+  } catch (err) {
+    return res.json({
+      status: "error",
+      message: err.toString()
+    });
+  }
 });
 
 export default router;
