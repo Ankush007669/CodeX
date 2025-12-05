@@ -1,53 +1,84 @@
-import fs from "fs";
-import fetch from "node-fetch";
+// utils/gdrive.js
 
-export function extractFileId(link) {
-    // Detect IDs from all Google Drive link formats
-    let match = link.match(/\/d\/([^\/]+)/);
-    if (match) return match[1];
+const axios = require('axios');
+const fs = require('fs');
+const { Writable } = require('stream');
 
-    match = link.match(/id=([^&]+)/);
-    if (match) return match[1];
+// *** THIS NEEDS THE UNIVERSAL DOWNLOADER FIX ***
 
-    return null;
-}
+/**
+ * Downloads a Google Drive file to a local path.
+ * @param {string} driveUrl - The Google Drive share link.
+ * @param {string} outputPath - The path to save the file.
+ */
+async function download(driveUrl, outputPath) {
+    const fileIdMatch = driveUrl.match(/id=([a-zA-Z0-9_-]+)/) || driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (!fileIdMatch) {
+        throw new Error("Invalid Google Drive URL or File ID not found.");
+    }
+    const fileId = fileIdMatch[1];
+    
+    // Initial download attempt URL
+    let downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    
+    try {
+        // Step 1 & 2: Initial attempt
+        let response = await axios({
+            method: 'get',
+            url: downloadUrl,
+            responseType: 'stream',
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400 || status === 302,
+        });
 
-export async function downloadGDrive(fileId, outputPath) {
-    const base = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        // Step 3 (OLD/BROKEN LOGIC): If a redirection or confirmation is needed
+        if (response.status === 302 || (response.headers['content-type'] && response.headers['content-type'].includes('text/html'))) {
+            const htmlContent = response.data instanceof Writable ? await streamToString(response.data) : response.data.toString();
+            
+            // The RegEx below is currently failing!
+            const confirmTokenMatch = htmlContent.match(/confirm=([a-zA-Z0-9_-]+)/);
 
-    let res = await fetch(base);
+            if (!confirmTokenMatch) {
+                // *** THIS IS THE LINE THROWING THE ERROR ***
+                throw new Error("Google Drive confirmation token not found (New Google Update). Fix required.");
+            }
+            
+            // Step 4: Retry with confirm token (OLD/BROKEN LOGIC)
+            const confirmToken = confirmTokenMatch[1];
+            downloadUrl = `${downloadUrl}&confirm=${confirmToken}`;
 
-    const contentType = res.headers.get("content-type");
-
-    // If Google blocks direct download, it sends HTML instead of file
-    if (contentType && contentType.includes("text/html")) {
-        const html = await res.text();
-
-        // Try extracting confirm token from multiple formats
-        let token =
-            html.match(/confirm=([^&]+)/)?.[1] ||
-            html.match(/data-token="([^"]+)"/)?.[1] ||
-            html.match(/"confirm":"([^"]+)"/)?.[1];
-
-        if (!token) {
-            throw new Error("Google Drive confirmation token not found");
+            response = await axios({
+                method: 'get',
+                url: downloadUrl,
+                responseType: 'stream',
+                maxRedirects: 10
+            });
         }
+        
+        // Step 5: Stream file to disk
+        const writer = fs.createWriteStream(outputPath);
+        response.data.pipe(writer);
 
-        // Try again with confirm token
-        const bypassUrl = `https://drive.google.com/uc?export=download&confirm=${token}&id=${fileId}`;
-        res = await fetch(bypassUrl);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+    } catch (error) {
+        // Cleanup on failure
+        if (fs.existsSync(outputPath)) await fs.promises.unlink(outputPath);
+        throw error;
     }
-
-    if (!res.ok) {
-        throw new Error("Google Drive download request failed");
-    }
-
-    // Download stream to disk
-    const fileStream = fs.createWriteStream(outputPath);
-
-    return new Promise((resolve, reject) => {
-        res.body.pipe(fileStream);
-        res.body.on("error", reject);
-        fileStream.on("finish", resolve);
-    });
 }
+
+// Utility to read stream to string (for HTML parsing)
+function streamToString(stream) {
+    const chunks = [];
+    return new Promise((resolve, reject) => {
+        stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        stream.on('error', (err) => reject(err));
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    })
+}
+
+module.exports = { download };
