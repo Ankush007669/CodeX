@@ -9,11 +9,19 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
   try {
-const { file_name, drive_link, host } = req.body;
+    let { file_name, drive_link, host } = req.body;
 
+    // Validate Google Drive link
+    if (!drive_link)
+      return res.json({ status: "error", message: "Missing Google Drive link" });
 
-    if (!file_name || !drive_link)
-      return res.json({ status: "error", message: "Missing fields" });
+    // Auto-generate filename if missing
+    if (!file_name || file_name.trim() === "") {
+      file_name = "video_" + Date.now() + ".mp4";
+    }
+
+    // Default host = Abyss
+    if (!host) host = "abyss";
 
     const fileId = extractFileId(drive_link);
 
@@ -22,29 +30,36 @@ const { file_name, drive_link, host } = req.body;
 
     const filePath = config.tmp_dir + file_name;
 
-    // STEP 1: Download GDrive → temp file
+    console.log("➡ Downloading from Google Drive:", fileId);
+
+    // STEP 1 — Google Drive से FULL file डाउनलोड
     await downloadGDrive(fileId, filePath);
 
-    // STEP 2: Stream file to Worker uploader
+    console.log("✔ Download complete:", filePath);
+    console.log("➡ Uploading to worker:", host.toUpperCase());
+
+    // STEP 2 — Worker को file भेजना
     const uploadUrl =
-    host === "abyss"
-    ? `${config.worker_url}abyss-upload?key=${config.abyss_key}`
-    : `${config.worker_url}rpm-upload?key=${config.rpm_key}`;
+      host === "abyss"
+        ? `${config.worker_url}abyss-upload?key=${config.abyss_key}`
+        : `${config.worker_url}rpm-upload?key=${config.rpm_key}`;
 
-    const workerUpload = await fetch(uploadUrl, {
+    const workerResponse = await fetch(uploadUrl, {
       method: "POST",
-      body: fs.createReadStream(filePath)
+      body: fs.readFileSync(filePath) // READ FULL FILE, NOT STREAM
     });
-    
-    const finalJson = await workerUpload.json();
 
+    const json = await workerResponse.json();
 
-    // STEP 3: Cleanup
+    console.log("✔ Worker response:", json);
+
+    // STEP 3 — temp file remove
     cleanup(filePath);
 
-    return res.json(finalJson);
+    return res.json(json);
 
   } catch (err) {
+    console.error("🔥 Error:", err);
     return res.json({
       status: "error",
       message: err.toString()
@@ -53,4 +68,3 @@ const { file_name, drive_link, host } = req.body;
 });
 
 export default router;
-
