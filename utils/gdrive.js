@@ -81,4 +81,4 @@ function streamToString(stream) {
     })
 }
 
-module.exports = { download };
+export default = { download };
