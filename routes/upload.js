@@ -25,14 +25,18 @@ router.post("/", async (req, res) => {
     await downloadGDrive(fileId, filePath);
 
     // STEP 2: Stream file to Worker uploader
-    const uploadUrl = `${config.worker_url}abyss-upload?key=${config.abyss_key}`;
+    const uploadUrl =
+    host === "abyss"
+    ? `${config.worker_url}abyss-upload?key=${config.abyss_key}`
+    : `${config.worker_url}rpm-upload?key=${config.rpm_key}`;
 
     const workerUpload = await fetch(uploadUrl, {
       method: "POST",
       body: fs.createReadStream(filePath)
     });
-
+    
     const finalJson = await workerUpload.json();
+
 
     // STEP 3: Cleanup
     cleanup(filePath);
