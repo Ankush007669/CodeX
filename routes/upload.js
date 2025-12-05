@@ -23,13 +23,13 @@ router.post("/", async (req, res) => {
 
         const filePath = config.tmp_dir + file_name;
 
-        // STEP 1: Download from Google Drive → VPS
+        // STEP 1: Download from Google Drive → local temp
         await downloadGDrive(fileId, filePath);
 
-        // STEP 2: Upload VPS file → Abyss
-        const abyssResult = await uploadAbyss(fileId);
+        // STEP 2: Upload temp file → Abyss using API KEY
+        const abyssResult = await uploadToAbyssLocal(filePath);
 
-        // STEP 3: Delete temporary file
+        // STEP 3: Remove temp file
         cleanup(filePath);
 
         return res.json(abyssResult);
