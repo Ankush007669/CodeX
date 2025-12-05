@@ -1,6 +1,6 @@
 import express from "express";
 import { extractFileId, downloadGDrive } from "../utils/gdrive.js";
-import { uploadAbyss } from "../utils/abyss.js";
+import { uploadToAbyssLocal } from "../utils/abyss.js";
 import { cleanup } from "../utils/cleanup.js";
 import config from "../config.js";
 
