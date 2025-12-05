@@ -14,23 +14,31 @@ router.post("/", async (req, res) => {
             return res.json({ status: "error", message: "Missing fields" });
 
         const fileId = extractFileId(drive_link);
-        if (!fileId) return res.json({ status: "error", message: "Invalid GDrive link" });
+        if (!fileId) {
+            return res.json({
+                status: "error",
+                message: "Invalid Google Drive link"
+            });
+        }
 
         const filePath = config.tmp_dir + file_name;
 
-        // 1) Google Drive → VPS download
+        // STEP 1: Download from Google Drive → VPS
         await downloadGDrive(fileId, filePath);
 
-        // 2) VPS → Abyss upload
-        const result = await uploadAbyss(filePath);
+        // STEP 2: Upload VPS file → Abyss
+        const abyssResult = await uploadAbyss(fileId);
 
-        // 3) Temp file delete
+        // STEP 3: Delete temporary file
         cleanup(filePath);
 
-        return res.json(result);
+        return res.json(abyssResult);
 
     } catch (err) {
-        return res.json({ status: "error", message: err.toString() });
+        return res.json({
+            status: "error",
+            message: "Server error: " + err.toString()
+        });
     }
 });
 
