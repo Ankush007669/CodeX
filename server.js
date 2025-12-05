@@ -1,13 +1,21 @@
 // server.js (VPS Main Entry)
 
+// OLD (CJS):
 const express = require('express');
 const bodyParser = require('body-parser');
-const path = require('path');
-const fs = require('fs/promises'); // For file operations
-const gdrive = require('./utils/gdrive'); // GDrive Downloader
-const abyss = require('./utils/abyss'); // Abyss Uploader
+const fs = require('fs/promises');
+const gdrive = require('./utils/gdrive');
+// ...
+
+// NEW (ESM):
+import express from 'express';
+import bodyParser from 'body-parser';
+import fs from 'fs/promises';
+import * as gdrive from './utils/gdrive.js'; // Note the .js extension and * as
+import * as abyss from './utils/abyss.js'; // Note the .js extension and * as
 
 const app = express();
+// ...
 const PORT = 3000;
 const TEMP_DIR = path.join(__dirname, 'temp_downloads');
 const CLOUDFLARE_WORKER_URL = 'https://codexmirror.trustedgamer007.workers.dev'; // Replace with your Worker URL
@@ -65,3 +73,4 @@ app.post('/api/upload', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`VPS Auto Mirror API listening on port ${PORT}`);
 });
+
