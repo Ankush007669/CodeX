@@ -4,19 +4,16 @@ import fs from "fs";
 import config from "../config.js";
 
 export async function uploadRPM(filePath) {
-    
-    // 1) Fetch upload server URL
+
+    // STEP 1 — Fetch Upload Server URL
     const srv = await fetch(`https://rpmshare.com/api/upload/server?key=${config.rpm_key}`, {
-        headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "*/*"
-        }
+        headers: { "User-Agent": "Mozilla/5.0" }
     });
 
     const srvData = await srv.json();
     const uploadUrl = srvData?.result;
 
-    if (!uploadUrl || typeof uploadUrl !== "string") {
+    if (!uploadUrl) {
         return {
             status: "error",
             message: "RPM upload server fetch failed",
@@ -24,20 +21,25 @@ export async function uploadRPM(filePath) {
         };
     }
 
-    // 2) Prepare form-data
+    // STEP 2 — FORM-DATA (REAL FIX HERE)
     const form = new FormData();
-    form.append("key", config.rpm_key);
-    form.append("file", fs.createReadStream(filePath), {
-        filename: "video.mp4",
+
+    // rpm legacy requires files[] instead of file
+    form.append("files[]", fs.createReadStream(filePath), {
+        filename: "upload.mp4",
         contentType: "video/mp4"
     });
 
-    // 3) Upload file
+    form.append("key", config.rpm_key);
+
+
+    // STEP 3 — SEND REQUEST
     const up = await fetch(uploadUrl, {
         method: "POST",
         body: form,
         redirect: "follow",
         headers: {
+            ...form.getHeaders(),
             "User-Agent": "Mozilla/5.0",
             "Accept": "*/*",
             "Origin": "https://rpmshare.com",
@@ -47,7 +49,8 @@ export async function uploadRPM(filePath) {
 
     const data = await up.json().catch(() => null);
 
-    if (!data?.result?.filecode) {
+    // STEP 4 — VERIFY FILE RECEIVED
+    if (!data?.files || data.files.length === 0) {
         return {
             status: "error",
             message: "RPM upload failed",
@@ -55,8 +58,19 @@ export async function uploadRPM(filePath) {
         };
     }
 
+    // STEP 5 — GET EMBED LINK
+    const filecode = data.files[0]?.filecode;
+
+    if (!filecode) {
+        return {
+            status: "error",
+            message: "Filecode missing",
+            full_response: data
+        };
+    }
+
     return {
         status: "success",
-        link: `https://rpmshare.com/embed-${data.result.filecode}.html`
+        link: `https://rpmshare.com/embed-${filecode}.html`
     };
 }
