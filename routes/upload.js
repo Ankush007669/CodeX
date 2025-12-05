@@ -9,7 +9,8 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
   try {
-    const { file_name, drive_link } = req.body;
+const { file_name, drive_link, host } = req.body;
+
 
     if (!file_name || !drive_link)
       return res.json({ status: "error", message: "Missing fields" });
