@@ -1,7 +1,6 @@
 import express from "express";
 import { extractFileId, downloadGDrive } from "../utils/gdrive.js";
 import { uploadAbyss } from "../utils/abyss.js";
-import { uploadRPM } from "../utils/rpmshare.js";
 import { cleanup } from "../utils/cleanup.js";
 import config from "../config.js";
 
@@ -9,9 +8,9 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
     try {
-        const { file_name, drive_link, host } = req.body;
+        const { file_name, drive_link } = req.body;
 
-        if (!file_name || !drive_link || !host)
+        if (!file_name || !drive_link)
             return res.json({ status: "error", message: "Missing fields" });
 
         const fileId = extractFileId(drive_link);
@@ -19,15 +18,15 @@ router.post("/", async (req, res) => {
 
         const filePath = config.tmp_dir + file_name;
 
-        // Download
+        // 1) Google Drive → VPS download
         await downloadGDrive(fileId, filePath);
 
-        let result;
-        if (host === "abyss") result = await uploadAbyss(filePath);
-        else if (host === "rpm") result = await uploadRPM(filePath);
-        else result = { status:"error", message:"Invalid host" };
+        // 2) VPS → Abyss upload
+        const result = await uploadAbyss(filePath);
 
+        // 3) Temp file delete
         cleanup(filePath);
+
         return res.json(result);
 
     } catch (err) {
